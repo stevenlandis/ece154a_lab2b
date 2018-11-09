@@ -45,20 +45,28 @@ volatile int mode_interrupt = 0;
 
 volatile unsigned int encoderState = 0;
 
+void startTimer() {
+	XTmrCtr_Start(&per_timer, 0);
+}
+
 void twistLeft() {
 	encoder_interrupt = 1;
-	if (AO_Lab2A.volume > 0) {
-		AO_Lab2A.volume--;
-	}
+//	if (AO_Lab2A.volume > 0) {
+//		AO_Lab2A.volume--;
+//	}
+
+	QActive_post((QActive*)(&AO_Lab2A), ENCODER_DOWN);
 
 	//xil_printf("l");
 }
 
 void twistRight() {
 	encoder_interrupt = 1;
-	if (AO_Lab2A.volume < 63) {
-		AO_Lab2A.volume++;
-	}
+//	if (AO_Lab2A.volume < 63) {
+//		AO_Lab2A.volume++;
+//	}
+
+	QActive_post((QActive*)(&AO_Lab2A), ENCODER_UP);
 
 	//xil_printf("r");
 }
@@ -67,8 +75,7 @@ void updateEncoderState(u32 encoderData) {
 	u32 button = encoderData & 0b100;
 
 	if (button) {
-		encoder_interrupt = 1;
-		AO_Lab2A.volume = 0;
+		QActive_post((QActive*)(&AO_Lab2A), ENCODER_CLICK);
 	}
 
 	u32 ab = encoderData & 0b11;
@@ -256,10 +263,11 @@ void BSP_init(void) {
 }
 /*..........................................................................*/
 void QF_onStartup(void) {                 /* entered with interrupts locked */
-
+	microblaze_disable_interrupts();
 /* Enable interrupts */
 	xil_printf("\n\rQF_onStartup\n"); // Comment out once you are in your complete program
 	fillBackground(0,0,239,319);
+	microblaze_enable_interrupts();
 
 
 	// Press Knob
@@ -311,18 +319,40 @@ void QF_onIdle(void) {        /* entered with interrupts locked */
 
     	//Lab2A* me = &AO_Lab2A;
 
-    	if ((AO_Lab2A.mode_drawn != AO_Lab2A.mode)|| mode_interrupt) {
-    		mode_interrupt = 0;
-    		AO_Lab2A.mode_drawn = AO_Lab2A.mode;
+    	//if ((AO_Lab2A.mode_drawn != AO_Lab2A.mode)|| mode_interrupt) {
+    	//xil_printf("Idle: ");
+    	if (AO_Lab2A.draw_mode) {
+    		AO_Lab2A.draw_mode = 0;
+    		AO_Lab2A.mode_on_screen = 1;
     		drawMode(AO_Lab2A.mode);
-
-    	} else if ((AO_Lab2A.volume_drawn != AO_Lab2A.volume)  || encoder_interrupt) {
-    		encoder_interrupt = 0;
-    		int temp_volume = AO_Lab2A.volume_drawn;
-    		AO_Lab2A.volume_drawn = AO_Lab2A.volume;
-    		drawVolume(temp_volume, AO_Lab2A.volume, !AO_Lab2A.volume_on_screen);
-    		AO_Lab2A.volume_on_screen = 1;
+    	} else if (AO_Lab2A.clear_mode) {
+    		AO_Lab2A.clear_mode = 0;
+    		AO_Lab2A.mode_on_screen = 0;
+    		clearMode();
     	}
+
+    	if (AO_Lab2A.draw_volume) {
+			AO_Lab2A.draw_volume = 0;
+			AO_Lab2A.volume_on_screen = 1;
+			drawVolume(AO_Lab2A.volume);
+		} else if (AO_Lab2A.clear_volume) {
+			AO_Lab2A.clear_volume = 0;
+			AO_Lab2A.volume_on_screen = 0;
+			drawVolume(0);
+		}
+    	//xil_printf("\n");
+
+//    	if (mode_interrupt) {
+//    		mode_interrupt = 0;
+//    		AO_Lab2A.mode_drawn = AO_Lab2A.mode;
+//    		drawMode(AO_Lab2A.mode);
+//
+//    	} else if (encoder_interrupt) {
+//    		encoder_interrupt = 0;
+//    		AO_Lab2A.volume_drawn = AO_Lab2A.volume;
+//    		drawVolume(AO_Lab2A.volume);
+//    		AO_Lab2A.volume_on_screen = 1;
+//    	}
 // 			Useful for Debugging, and understanding your Microblaze registers.
 //    		u32 axi_ISR =  Xil_In32(intcPress.BaseAddress + XIN_ISR_OFFSET);
 //    	    u32 axi_IPR =  Xil_In32(intcPress.BaseAddress + XIN_IPR_OFFSET);
@@ -373,16 +403,13 @@ void ButtonHandler(void *CallbackRef) {
 	// Increment A counter
 	u32 data = XGpio_DiscreteRead(&per_btns, 1);
 	XGpio_DiscreteWrite(&per_leds, 1, data);
-	if(data&0b10000){
-		AO_Lab2A.mode = 5;
-	}
+	if     (data&0b10000){AO_Lab2A.mode = 5;}
 	else if(data&0b01000){AO_Lab2A.mode = 4;}
 	else if(data&0b00100){AO_Lab2A.mode = 3;}
 	else if(data&0b00010){AO_Lab2A.mode = 2;}
 	else if(data&0b00001){AO_Lab2A.mode = 1;}
-	mode_interrupt = 1;
-	// start the timer
-	XTmrCtr_Start(&per_timer, 0);
+
+	QActive_post((QActive*)(&AO_Lab2A), BUTTON_PRESS);
 
 	// mark interrupt as handled
 	XGpio_InterruptClear(&per_btns, 0xFFFFFFFF);
@@ -403,11 +430,13 @@ void TwistHandler(void *CallbackRef) {
 
 void TimerHandler(void * CallbackRef) {
 	// handler code
-	AO_Lab2A.volume_on_screen = 0;
-	clearVolume();
+	QActive_post((QActive*)(&AO_Lab2A), TIMER_END);
 
-	AO_Lab2A.mode_on_screen = 0;
-	clearMode();
+//	AO_Lab2A.volume_on_screen = 0;
+//	clearVolume();
+//
+//	AO_Lab2A.mode_on_screen = 0;
+//	clearMode();
 
 	// acknowledge that interrupt handled
 	u32 controlReg = XTimerCtr_ReadReg(per_timer.BaseAddress, 0, XTC_TCSR_OFFSET);

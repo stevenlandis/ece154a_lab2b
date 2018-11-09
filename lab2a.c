@@ -9,18 +9,12 @@
 #include "bsp.h"
 #include "lab2a.h"
 
-
-
-
-
-
 /* Setup state machines */
 /**********************************************************************/
 static QState Lab2A_initial (Lab2A *me);
 static QState Lab2A_on      (Lab2A *me);
-static QState Lab2A_stateA  (Lab2A *me);
-static QState Lab2A_stateB  (Lab2A *me);
-
+static QState Lab2A_Background  (Lab2A *me);
+static QState Lab2A_OnScreen  (Lab2A *me);
 
 /**********************************************************************/
 
@@ -31,11 +25,15 @@ Lab2A AO_Lab2A;
 void Lab2A_ctor(void)  {
 	Lab2A *me = &AO_Lab2A;
 	AO_Lab2A.mode = 1;
-	AO_Lab2A.mode_drawn = 1;
-	AO_Lab2A.volume = 0;
-	AO_Lab2A.volume_drawn = 0;
-	AO_Lab2A.volume_on_screen = 0;
+	AO_Lab2A.draw_mode = 0;
+	AO_Lab2A.clear_mode = 0;
 	AO_Lab2A.mode_on_screen = 0;
+
+	AO_Lab2A.volume = 0;
+	AO_Lab2A.draw_volume = 0;
+	AO_Lab2A.clear_mode = 0;
+	AO_Lab2A.volume_on_screen = 0;
+
 	QActive_ctor(&me->super, (QStateHandler)&Lab2A_initial);
 }
 
@@ -52,10 +50,45 @@ QState Lab2A_on(Lab2A *me) {
 			}
 			
 		case Q_INIT_SIG: {
-			return Q_TRAN(&Lab2A_stateA);
+			return Q_TRAN(&Lab2A_Background);
+		}
+		
+		case ENCODER_UP: {
+//			xil_printf("\nEncoder Up from State A");
+			if (me->volume < 63) {
+				me->volume++;
 			}
+			me->draw_volume = 1;
+
+			return Q_TRAN(&Lab2A_OnScreen);
+		}
+
+		case ENCODER_DOWN: {
+//			xil_printf("\nEncoder Down from State A");
+			if (me->volume > 0) {
+				me->volume--;
+			}
+			me->draw_volume = 1;
+
+			return Q_TRAN(&Lab2A_OnScreen);
+		}
+
+		case ENCODER_CLICK:  {
+//			xil_printf("\nChanging State");
+
+			me->volume = 0;
+			me->draw_volume = 1;
+
+			return Q_TRAN(&Lab2A_OnScreen);
+		}
+
+		case BUTTON_PRESS: {
+			me->draw_mode = 1;
+
+			return Q_TRAN(&Lab2A_OnScreen);
+		}
 	}
-	
+
 	return Q_SUPER(&QHsm_top);
 }
 
@@ -63,56 +96,39 @@ QState Lab2A_on(Lab2A *me) {
 /* Create Lab2A_on state and do any initialization code if needed */
 /******************************************************************/
 
-QState Lab2A_stateA(Lab2A *me) {
+// nothing on the screen
+QState Lab2A_Background(Lab2A *me) {
 	switch (Q_SIG(me)) {
 		case Q_ENTRY_SIG: {
-			xil_printf("Startup State A\n");
+//			xil_printf("\nStartup State A");
+			if (me->mode_on_screen) {
+				me->clear_mode = 1;
+			}
+
+			if (me->volume_on_screen) {
+				me->clear_volume = 1;
+			}
+
 			return Q_HANDLED();
 		}
-		
-		case ENCODER_UP: {
-			xil_printf("Encoder Up from State A\n");
-			return Q_HANDLED();
-		}
-
-		case ENCODER_DOWN: {
-			xil_printf("Encoder Down from State A\n");
-			return Q_HANDLED();
-		}
-
-		case ENCODER_CLICK:  {
-			xil_printf("Changing State\n");
-			return Q_TRAN(&Lab2A_stateB);
-		}
-
 	}
 
 	return Q_SUPER(&Lab2A_on);
 
 }
 
-QState Lab2A_stateB(Lab2A *me) {
+QState Lab2A_OnScreen(Lab2A *me) {
 	switch (Q_SIG(me)) {
 		case Q_ENTRY_SIG: {
-			xil_printf("Startup State B\n");
+
+//			xil_printf("Startup State B\n");
+			startTimer();
 			return Q_HANDLED();
 		}
-		
-		case ENCODER_UP: {
-			xil_printf("Encoder Up from State B\n");
-			return Q_HANDLED();
-		}
+		case TIMER_END: {
 
-		case ENCODER_DOWN: {
-			xil_printf("Encoder Down from State B\n");
-			return Q_HANDLED();
+			return Q_TRAN(Lab2A_Background);
 		}
-
-		case ENCODER_CLICK:  {
-			xil_printf("Changing State\n");
-			return Q_TRAN(&Lab2A_stateA);
-		}
-
 	}
 
 	return Q_SUPER(&Lab2A_on);

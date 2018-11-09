@@ -9,18 +9,24 @@
 enum Lab2ASignals {
 	ENCODER_UP = Q_USER_SIG,
 	ENCODER_DOWN,
-	ENCODER_CLICK
+	ENCODER_CLICK,
+	TIMER_END,
+	BUTTON_PRESS
 };
 
 
 extern struct Lab2ATag AO_Lab2A;
 typedef struct Lab2ATag  {               //Lab2A State machine
 	QActive super;
+
 	int volume;
-	int volume_drawn;
+	int draw_volume;
+	int clear_volume;
 	int volume_on_screen;
+
 	int mode;
-	int mode_drawn;
+	int draw_mode;
+	int clear_mode;
 	int mode_on_screen;
 
 }  Lab2A;

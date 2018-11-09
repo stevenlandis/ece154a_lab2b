@@ -103,7 +103,7 @@ void clrScr(void);
 void drawHLine(int x, int y, int l);
 void fillRect(int x1, int y1, int x2, int y2);
 void fillBackground(int x1, int y1, int x2, int y2);
-void drawVolume(int prev_vol, int cur_vol, int re_draw);
+void drawVolume(int cur_vol);
 void clearVolume();
 void drawMode(int m);
 void clearMode();

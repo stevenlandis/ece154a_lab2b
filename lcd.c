@@ -45,6 +45,7 @@
 */
 
 #include "lcd.h"
+#include "math.h"
 
 // Global variables
 int fch;
@@ -52,6 +53,9 @@ int fcl;
 int bch;
 int bcl;
 struct _current_font cfont;
+
+#define LCD_WIDTH 240
+#define LCD_HEIGHT 320
 
 #define sliderWidth (63*2)
 #define sliderHeight (sliderWidth/4)
@@ -304,6 +308,72 @@ void fillRect(int x1, int y1, int x2, int y2)
    clrXY();
 }
 
+int normalPattern(int x, int y) {
+	int xMod = x % 40;
+	int yMod = y % 40;
+
+	return  ((0 <= xMod) && (xMod < 5)) ||
+			((35 <= xMod) && (xMod < 40)) ||
+			((0 <= yMod) && (yMod < 5)) ||
+			((35 <= yMod) && (yMod < 40));
+}
+
+/*
+
+void setPatternColor(int x, int y) {
+	int xMod = x % 40;
+	int yMod = y % 40;
+
+	if (
+			(0 <= xMod) && (xMod < 5)) ||
+			((35 <= xMod) && (xMod < 40)) ||
+			((0 <= yMod) && (yMod < 5)) ||
+			((35 <= yMod) && (yMod < 40)
+	) {
+		setColor(COLOR_A);
+	} else {
+		setColor(COLOR_B);
+	}
+}
+
+*/
+
+int diamondPattern(int x, int y) {
+	return normalPattern(x+y, 500+x-y);
+}
+
+int circlePattern(int x, int y) {
+	x = LCD_WIDTH/2 - x;
+	y = LCD_HEIGHT/2 - y;
+	int r = sqrt(x*x+y*y);
+
+	return (r % 40) < 2;
+}
+
+int noisePattern(int x, int y) {
+	int hash = x*x + y*y*y;
+	hash >>= 3;
+
+	return (hash%40) < 6;
+}
+
+int spiralPattern(int x, int y) {
+	x = LCD_WIDTH/2 - x;
+	y = LCD_HEIGHT/2 - y;
+	float r = sqrt(x*x+y*y);
+	float theta = atan2(y, x);
+
+	return fmod((r - 30*theta), 2*M_PI) < 1;
+}
+
+void setCrazyColor(int x, int y) {
+	setColor(
+		(x+y)%256,
+		(2*256+y-x)%256,
+		(x*y)%256
+	);
+}
+
 void fillBackground(int x1, int y1, int x2, int y2)
 {
     if (x1 > x2)
@@ -312,23 +382,29 @@ void fillBackground(int x1, int y1, int x2, int y2)
     if (y1 > y2)
         swap(int, y1, y2);
     setXY(x1, y1, x2, y2);
-    int xMod;
-	int yMod;
+
+    int lastColor = 0;
+    setColor(0, 255, 0);
+
     for (int ytemp = y1; ytemp <= y2; ytemp++) {
     	for (int xtemp = x1; xtemp <= x2; xtemp++) {
-    		xMod = xtemp % 40;
-    		yMod = ytemp % 40;
 
-    		if (
-    				((0 <= xMod) && (xMod < 5)) ||
-					((35 <= xMod) && (xMod < 40)) ||
-					((0 <= yMod) && (yMod < 5)) ||
-					((35 <= yMod) && (yMod < 40))
-    		) {
-    			setColor(0, 255, 0);
+//    		setCrazyColor(xtemp, ytemp);
+//    		LCD_Write_DATA16(fch, fcl);
+//    		continue;
+
+//    		if (circlePattern(xtemp, ytemp) != diamondPattern(xtemp, ytemp)) {
+    		if (noisePattern(xtemp, ytemp)) {
+    			if (lastColor != 0) {
+    				setColor(0, 255, 0);
+    				lastColor = 0;
+    			}
     		}
     		else{
-    			setColor(204, 0, 102);
+    			if (lastColor != 1) {
+    				setColor(204, 0, 102);
+					lastColor = 1;
+				}
     		}
     		LCD_Write_DATA16(fch, fcl);
     	}
@@ -337,17 +413,12 @@ void fillBackground(int x1, int y1, int x2, int y2)
    clrXY();
 }
 
-void drawVolume(int prev_vol, int cur_vol, int re_draw) {
-	if (re_draw) {
-		setColor(255, 170, 0);
-		fillRect(box_x,box_y,box_x+boxWidth-1,box_y+boxHeight-1);
+static int prev_vol = 0;
 
-		if (cur_vol == 0) return;
+void drawVolume(int cur_vol) {
+	if (cur_vol == prev_vol) return;
 
-		setColor(85, 0, 255);
-		fillRect(slider_x,slider_y,slider_x + cur_vol*2 - 1,slider_y+sliderHeight-1);
-	}
-	else if (prev_vol < cur_vol) { //increasing volume
+	if (prev_vol < cur_vol) { //increasing volume
 		setColor(85, 0, 255);
 		fillRect(
 			slider_x + 2*prev_vol,
@@ -358,18 +429,18 @@ void drawVolume(int prev_vol, int cur_vol, int re_draw) {
 	}
 	else{ //decreasing volume
 		setColor(255, 170, 0);
-		fillRect(
+		fillBackground(
 			slider_x + 2*cur_vol,
 			slider_y,
 			slider_x + 2*prev_vol - 1,
 			slider_y+sliderHeight-1
 		);
 	}
-
+	prev_vol = cur_vol;
 }
 
 void clearVolume() {
-	fillBackground(box_x,box_y,box_x+boxWidth-1,box_y+boxHeight-1);
+	fillBackground(slider_x,slider_y,slider_x + sliderWidth - 1,slider_y+sliderHeight-1);
 }
 
 void drawMode(int m) {
